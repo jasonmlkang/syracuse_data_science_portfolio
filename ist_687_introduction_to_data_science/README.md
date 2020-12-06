@@ -1,11 +1,11 @@
 # IST 687 Introduction to Data Science
 
-### Description
+### Project Description
 
 The goal of this project is to find out whether there exists a correlation
 between the stats of NBA teams and their winnings.
 
-### Files and Description
+### Files
 
 - __report.pdf__: final project turn-in
 - __champions_data_munging.R__: R code to explore _championsdata.csv_
