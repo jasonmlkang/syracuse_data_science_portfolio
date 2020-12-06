@@ -1,4 +1,4 @@
-# IST 687 Introduction to Data Science
+# IST 659 Data Admin Concepts
 
 ### Description
 
