@@ -1,4 +1,4 @@
-# MAR 638 Data Analysis and Decision Making
+# MBC 638 Data Analysis and Decision Making
 
 ### Project Description
 
