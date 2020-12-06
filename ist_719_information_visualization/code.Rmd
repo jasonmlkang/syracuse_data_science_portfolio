@@ -1,0 +1,221 @@
+```{r setup, include=FALSE}
+library(data.table)
+library(ggplot2)
+library(knitr)
+library(dplyr)
+library(viridis)
+library(purrr)
+library(reshape2)
+opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# read yearly listing summary data
+fnames = list.files('/Users/kang/Documents/syracuse_datascience/IST/719/proj/poster/02_presentation/data', pattern = 'listings_201\\d12.csv', full.names = TRUE)
+df_list = lapply(
+  fnames,
+  function(x) fread(x)
+)
+# name each data set
+names(df_list) <- 2015:2019
+
+df <- map_df(df_list, ~as.data.frame(.x), .id="year")
+dfplot <- df %>% count(year, neighbourhood_group)
+```
+
+### Plot: Growth rate in AirBnb listings in NYC has significantly decreased from 2015 - 2019
+
+```{r}
+nycGrowth <- data.frame(
+  year = 2016:2019,
+  perc_growth = round(diff(tapply(dfplot$n, dfplot$year, sum)) / tapply(dfplot$n, dfplot$year, sum)[1:4],2)
+)
+
+ggplot(nycGrowth, aes( x = year, y = perc_growth )) +
+  geom_point(col='#F16664') + geom_line(col='#F16664') +
+  ylab("percent change in listings") +
+  ggtitle("Rate of Change in Number of Listings in NYC (2015 - 2019)")
+```
+
+### Plot: Growth in Listings Over Time
+
+```{r}
+dfplot$color <- '#6F5191'
+dfplot$color[dfplot$neighbourhood_group=='Brooklyn'] <- '#7E689C'
+dfplot$color[dfplot$neighbourhood_group=='Manhattan'] <- '#7F86A'
+dfplot$color[dfplot$neighbourhood_group=='Queens'] <- '#526182'
+dfplot$color[dfplot$neighbourhood_group=='Staten Island'] <- '#40456E'
+ggplot(dfplot) +
+  geom_col(aes(x=year, y=n, fill=neighbourhood_group)) +
+  scale_fill_viridis(discrete = TRUE) +
+  ylab("Count of Listings") +
+  ggtitle("Total Number of AirBnb Listings in NYC by Year",
+          subtitle = "Segmented by Neighbourhood Group")
+```
+
+### Plot: Overall trend shows an increase in listings, with the majority share of listings in Brooklyn and Manhattan.*
+
+```{r}
+# listings growth rate by neighbourhood
+ngroups <- c('Bronx','Brooklyn','Manhattan','Queens','Staten Island')
+# function to get YoY growth rate given neighbourhood group
+getGrowth <- function(x) {
+  d <- dfplot[dfplot$neighbourhood_group == x,]
+  arr <- tapply(d$n, d$year, sum)
+  out <- round(diff(arr)/arr[1:length(arr)-1], 2)
+  return(out)
+}
+# dataframe of YoY change
+dYearDelta <- as.data.frame(sapply(ngroups, getGrowth) %>% t)
+dYearDelta$neighbour_group <- ngroups
+dYearDelta <- dYearDelta[,c('neighbour_group','2016','2017','2018','2019')]
+ggplot(melt(dYearDelta), aes(x = neighbour_group, y = variable, fill = value)) +
+  geom_tile() +
+  scale_fill_viridis() +
+  ggtitle("Year-over-Year Growth in Listings by Neighbourhood Group")
+```
+
+### Plot: Distribution of Listing Price Over Time by Neighbourhood Group
+
+```{r}
+dfplot3 <- df[,c('year', 'neighbourhood_group', 'price')]
+dfplot3$year <- as.factor(dfplot3$year)
+# log transform price
+dfplot3$logprice <- log(dfplot3$price)
+ggplot(dfplot3, aes(y = logprice, factor(year), fill = year)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE) +
+  xlab('year') +
+  theme_dark() +
+  ylab('log of listing price') +
+  facet_wrap(~neighbourhood_group) +
+  ggtitle("Log Listing Price by Year",
+          subtitle = "Facets Neighbourhood Group")
+```
+
+### Plot: How Does Neighbourhood Persona (PRIZM Attributes)  Relate with Price?
+
+```{r}
+# cleaned listings data for 2019, including census attributes
+df <- fread('/Users/kang/Documents/syracuse_datascience/IST/719/proj/poster/02_presentation/data/listings_cleaned.csv')
+```
+
+```{r}
+# discretize price into 5 equal frequency bins
+df$priceDisc <- arules::discretize(df$price, method = 'frequency', categories = 5)
+```
+
+```{r}
+dat <- as.data.frame(df)
+# remove prizm_cluster = 'UNK' (unknown)
+dat <- dat[!dat$prizm_cluster == 'UNK',]
+# keep just the top prizm clusters that make up 80% of the data
+clust_freq <- sort(table(dat$prizm_cluster), decreasing = TRUE)
+clust_keep <- clust_freq[which(cumsum(clust_freq) <= 0.8 * sum(clust_freq))] %>% names
+dat <- dat[dat$prizm_cluster %in% clust_keep,]
+# normalize the prizm features for each cluster
+# function to normalize vector
+normPrizm <- function(x) {
+  paste(
+    unique(
+      do.call('c', strsplit(gsub("\\[|\\]|[\"']",'',x), split = ', '))
+    ), collapse = ' | '
+  )
+}
+for (i in clust_keep) {
+  dat$prizm_features_norm[dat$prizm_cluster == i] <- normPrizm(
+    dat$prizm_features[dat$prizm_cluster == i]
+  )
+}
+# contingency table of clusters and discretized price
+dfPlot <- table(dat[,'prizm_cluster'], dat[,'priceDisc']) %>% as.data.frame
+# reorder cluster factor levels
+dfPlot$Var1 <- factor(dfPlot$Var1, levels = clust_keep)
+# scale frequency relative to cluster
+for (i in clust_keep) {
+  dfPlot$Freq[dfPlot$Var1 == i] <- scale(dfPlot$Freq[dfPlot$Var1 == i])
+}
+dfPlot <- transform(dfPlot, Var1=as.numeric(Var1))
+```
+
+```{r}
+ggplot(dfPlot, aes(Var1, Var2)) + 
+  geom_point(size = 10, aes(color = Freq)) + 
+  scale_color_viridis() +
+  xlab("Cluster Label") + ylab("Price Bins") +
+  ggtitle("Contingency Plot of Discretized Price and Top 14 Neighbourhood Personas")
+```
+
+### Plot: How does the number of listings by host relate to price; Segmented by Neighbourhood Group
+
+```{r}
+df$logprice <- log(df$price)
+dfplot <- df[,c('logprice','host_listings_count','neighbourhood_group_cleansed')]
+colnames(dfplot) <- c('logprice','host_listings_count','neighbourhood_grp')
+
+ggplot(dfplot, aes(x = host_listings_count, y = logprice, color = neighbourhood_grp)) +
+  facet_wrap(~neighbourhood_grp, scales = 'free_x') +
+  geom_point() +
+  ggtitle("Host Listings Count vs. Log Price")
+```
+
+### Plot: map
+
+```{r}
+# transform data for plot
+# get latitude and longitude coordinates from original data
+keep_cols <- c(
+  'id','state','price','population','median_home_value',
+  'median_household_income','neighbourhood_group_cleansed'
+)
+# listings_cleaned
+df <- as.data.frame(df)[,keep_cols] 
+# original 2019 listings summary
+df2 <- as.data.frame(df_list[[5]])[,c('id','latitude','longitude')]  
+dfplot <- merge(df, df2, by = 'id') %>% .[complete.cases(.),]
+# filter on just state == 'NY'
+dfplot <- dfplot[dfplot$state == 'NY',]
+# change 'NY' to 'new york'
+dfplot$state <- 'new york'
+```
+
+```{r}
+# specify latitude longitude coordinate limits
+xlim.min = min(dfplot$longitude)
+xlim.max = max(dfplot$longitude)
+ylim.min = min(dfplot$latitude)
+ylim.max = max(dfplot$latitude)
+```
+
+```{r}
+# specify state map data
+us <- map_data('state')
+```
+
+### Density of Listings
+
+```{r}
+# Density of listings
+ggplot(dfplot, aes(map_id = state, x = longitude, y = latitude)) +
+  geom_map(map = us, fill = 'black', color = 'white') +
+  expand_limits(x = us$long, y = us$lat) +
+  coord_map() +
+  scale_color_viridis() +
+  theme_bw() +
+  stat_density2d(aes(color = ..level..)) +
+  xlim(xlim.min, xlim.max) + ylim(ylim.min, ylim.max) +
+  ggtitle("Density of Listings in New York")
+```
+
+```{r}
+# median home value income by Zipcode
+ggplot(dfplot, aes(map_id = state)) +
+  geom_map(map = us, fill='white', color = 'black') +
+  expand_limits(x = us$long, y = us$lat) +
+  coord_map() +
+  geom_point(aes(x = longitude, y = latitude, col = median_household_income)) +
+  scale_color_viridis() +
+  theme_bw() +
+  xlim(xlim.min, xlim.max) + ylim(ylim.min, ylim.max) +
+  ggtitle("Median Income by Zipcode in New York")
+```
