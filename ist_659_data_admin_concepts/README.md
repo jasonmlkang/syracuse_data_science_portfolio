@@ -8,4 +8,4 @@ CodeXchange.
 
 ### Files and Description
 
-- jason_kang_project_02.pdf: final project turn-in
+- __jason_kang_project_02.pdf__: final project turn-in
