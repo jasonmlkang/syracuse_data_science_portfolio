@@ -1,6 +1,6 @@
 # Syracuse Master in Applied Data Science Portfolio
 
-### Project Description
+### About
 
 Portfolio Milestone project for Applied Data Science Graduate program at Syracuse University.
 
